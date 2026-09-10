@@ -49,4 +49,5 @@ export interface Backup {
   filename: string | null
   size_bytes: number | null
   error: string | null
+  extra_paths: string[]
 }

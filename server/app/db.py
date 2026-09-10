@@ -21,7 +21,8 @@ CREATE TABLE IF NOT EXISTS backups (
     status TEXT NOT NULL DEFAULT 'pending',
     filename TEXT,
     size_bytes INTEGER,
-    error TEXT
+    error TEXT,
+    extra_paths TEXT NOT NULL DEFAULT '[]'
 );
 """
 
@@ -42,6 +43,9 @@ def get_conn():
 def init_db():
     with get_conn() as conn:
         conn.executescript(SCHEMA)
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(backups)")}
+        if "extra_paths" not in columns:
+            conn.execute("ALTER TABLE backups ADD COLUMN extra_paths TEXT NOT NULL DEFAULT '[]'")
 
 
 def insert_metric(payload: dict):
@@ -76,13 +80,19 @@ def prune_older_than(cutoff_ts: float):
         conn.execute("DELETE FROM metrics WHERE ts < ?", (cutoff_ts,))
 
 
-def create_backup_request() -> int:
+def create_backup_request(extra_paths: list[str] | None = None) -> int:
     with get_conn() as conn:
         cur = conn.execute(
-            "INSERT INTO backups (requested_at, status) VALUES (?, 'pending')",
-            (time.time(),),
+            "INSERT INTO backups (requested_at, status, extra_paths) VALUES (?, 'pending', ?)",
+            (time.time(), json.dumps(extra_paths or [])),
         )
         return cur.lastrowid
+
+
+def _parse_row(row) -> dict:
+    d = dict(row)
+    d["extra_paths"] = json.loads(d.get("extra_paths") or "[]")
+    return d
 
 
 def get_pending_backup():
@@ -90,7 +100,7 @@ def get_pending_backup():
         row = conn.execute(
             "SELECT * FROM backups WHERE status = 'pending' ORDER BY id ASC LIMIT 1"
         ).fetchone()
-    return dict(row) if row else None
+    return _parse_row(row) if row else None
 
 
 def mark_backup_running(backup_id: int):
@@ -123,7 +133,7 @@ def list_backups(limit: int = 50):
         rows = conn.execute(
             "SELECT * FROM backups ORDER BY id DESC LIMIT ?", (limit,)
         ).fetchall()
-    return [dict(r) for r in rows]
+    return [_parse_row(r) for r in rows]
 
 
 def get_backup(backup_id: int):
@@ -131,4 +141,4 @@ def get_backup(backup_id: int):
         row = conn.execute(
             "SELECT * FROM backups WHERE id = ?", (backup_id,)
         ).fetchone()
-    return dict(row) if row else None
+    return _parse_row(row) if row else None

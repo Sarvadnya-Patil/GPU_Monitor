@@ -37,15 +37,18 @@ export function useBackups() {
     }
   }, [hasActive, refresh])
 
-  const requestBackup = useCallback(async () => {
-    setRequesting(true)
-    try {
-      await api.requestBackup()
-      refresh()
-    } finally {
-      setRequesting(false)
-    }
-  }, [refresh])
+  const requestBackup = useCallback(
+    async (extraPaths: string[] = []) => {
+      setRequesting(true)
+      try {
+        await api.requestBackup(extraPaths)
+        refresh()
+      } finally {
+        setRequesting(false)
+      }
+    },
+    [refresh],
+  )
 
   return { backups, requesting, requestBackup }
 }

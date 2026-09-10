@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { api } from '../api'
 import { useBackups } from '../hooks/useBackups'
 import type { BackupStatus } from '../types'
@@ -16,27 +17,62 @@ function formatSize(bytes: number | null): string {
   return mb > 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(1)} MB`
 }
 
+function parsePaths(input: string): string[] {
+  return input
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean)
+}
+
 export function BackupPanel() {
   const { backups, requesting, requestBackup } = useBackups()
   const hasActive = backups.some((b) => b.status === 'pending' || b.status === 'running')
+  const [extraPathsInput, setExtraPathsInput] = useState('')
+
+  const onBackupNow = () => {
+    requestBackup(parsePaths(extraPathsInput))
+    setExtraPathsInput('')
+  }
 
   return (
     <Card title="Environment backup — pip cache, git install, pip freeze">
-      <button
-        onClick={requestBackup}
-        disabled={requesting || hasActive}
-        style={{
-          border: '1px solid var(--border)',
-          background: hasActive ? 'var(--bg-subtle)' : 'var(--text)',
-          color: hasActive ? 'var(--text-muted)' : '#fff',
-          borderRadius: 8,
-          padding: '8px 16px',
-          fontSize: 13,
-          cursor: hasActive ? 'default' : 'pointer',
-        }}
-      >
-        {hasActive ? 'Backup in progress…' : 'Backup now'}
-      </button>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <input
+          type="text"
+          value={extraPathsInput}
+          onChange={(e) => setExtraPathsInput(e.target.value)}
+          placeholder="Extra folders on the workstation, comma-separated (optional)"
+          disabled={hasActive}
+          style={{
+            flex: '1 1 320px',
+            border: '1px solid var(--border)',
+            borderRadius: 8,
+            padding: '8px 12px',
+            fontSize: 13,
+            color: 'var(--text)',
+            background: hasActive ? 'var(--bg-subtle)' : 'var(--bg)',
+          }}
+        />
+        <button
+          onClick={onBackupNow}
+          disabled={requesting || hasActive}
+          style={{
+            border: '1px solid var(--border)',
+            background: hasActive ? 'var(--bg-subtle)' : 'var(--text)',
+            color: hasActive ? 'var(--text-muted)' : '#fff',
+            borderRadius: 8,
+            padding: '8px 16px',
+            fontSize: 13,
+            cursor: hasActive ? 'default' : 'pointer',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {hasActive ? 'Backup in progress…' : 'Backup now'}
+        </button>
+      </div>
+      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>
+        e.g. ~/datasets/configs, ~/notes — paths are resolved on the workstation, not here.
+      </div>
 
       <div style={{ marginTop: 16, display: 'grid', gap: 8 }}>
         {backups.length === 0 && (
@@ -66,6 +102,11 @@ export function BackupPanel() {
               />
               <span>{new Date(b.requested_at * 1000).toLocaleString()}</span>
               <span style={{ color: 'var(--text-muted)' }}>{b.status}</span>
+              {b.extra_paths.length > 0 && (
+                <span style={{ color: 'var(--text-muted)' }} title={b.extra_paths.join(', ')}>
+                  +{b.extra_paths.length} extra
+                </span>
+              )}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <span style={{ color: 'var(--text-muted)' }}>{formatSize(b.size_bytes)}</span>

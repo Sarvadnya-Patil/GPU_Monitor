@@ -17,10 +17,12 @@ export const api = {
 
   backups: () => fetch('/api/backups').then((r) => json<{ backups: Backup[] }>(r)),
 
-  requestBackup: () =>
-    fetch('/api/backup/request', { method: 'POST' }).then((r) =>
-      json<{ id: number; status: string }>(r),
-    ),
+  requestBackup: (extraPaths: string[] = []) =>
+    fetch('/api/backup/request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ extra_paths: extraPaths }),
+    }).then((r) => json<{ id: number; status: string }>(r)),
 
   downloadBackupUrl: (id: number) => `/api/backups/${id}/download`,
 }

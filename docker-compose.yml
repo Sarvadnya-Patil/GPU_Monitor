@@ -1,0 +1,11 @@
+services:
+  gpu-monitor:
+    build: .
+    container_name: gpu-monitor
+    ports:
+      - "5050:8000"
+    env_file:
+      - server/.env
+    volumes:
+      - ./server/data:/app/server/data
+    restart: unless-stopped

@@ -143,13 +143,22 @@ def run_pip_freeze() -> bytes:
     return out.encode("utf-8")
 
 
-def build_backup_tarball() -> io.BytesIO:
+def build_backup_tarball(request_extra_paths: list[str] | None = None) -> io.BytesIO:
+    # Extra paths come from the specific backup request made on the dashboard.
+    extra_paths = [Path(p).expanduser() for p in (request_extra_paths or [])]
+
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w:gz") as tar:
         if PIP_CACHE_DIR.exists():
             tar.add(PIP_CACHE_DIR, arcname="cache_pip")
         if GIT_INSTALL_DIR.exists():
             tar.add(GIT_INSTALL_DIR, arcname="local_git")
+
+        for i, path in enumerate(extra_paths):
+            if path.exists():
+                tar.add(path, arcname=f"extra_{i}_{path.name}")
+            else:
+                print(f"[backup] extra path does not exist, skipping: {path}")
 
         lockfile = run_pip_freeze()
         info = tarfile.TarInfo(name="pip-freeze.lock.txt")
@@ -173,7 +182,7 @@ def handle_pending_backup():
     SESSION.post(f"{SERVER_URL}/api/backup/{backup_id}/start", timeout=15)
 
     try:
-        tarball = build_backup_tarball()
+        tarball = build_backup_tarball(pending.get("extra_paths"))
         files = {"file": (f"backup_{backup_id}.tar.gz", tarball, "application/gzip")}
         r = SESSION.post(
             f"{SERVER_URL}/api/backup/{backup_id}/upload", files=files, timeout=600

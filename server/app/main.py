@@ -4,6 +4,7 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from . import db
 from .auth import require_agent_token, require_dashboard_auth
@@ -52,9 +53,13 @@ def metrics_history(minutes: int = 60):
 
 # ---- Backups ----------------------------------------------------------------
 
+class BackupRequestBody(BaseModel):
+    extra_paths: list[str] = []
+
+
 @app.post("/api/backup/request", dependencies=[Depends(require_dashboard_auth)])
-def backup_request():
-    backup_id = db.create_backup_request()
+def backup_request(body: BackupRequestBody = BackupRequestBody()):
+    backup_id = db.create_backup_request(body.extra_paths)
     return {"id": backup_id, "status": "pending"}
 
 

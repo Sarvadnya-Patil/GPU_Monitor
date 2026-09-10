@@ -33,32 +33,40 @@ GPU workstation (agent, outbound only) --HTTPS--> home server (FastAPI) <--Cloud
 
 ## Server setup (home server)
 
+The one Docker image builds the client and runs it together with the API —
+no separate frontend/backend containers, no Node runtime needed on the host.
+
+```bash
+cp server/.env.example server/.env
+# edit server/.env: set AGENT_TOKEN to a long random secret.
+# DASHBOARD_USER/PASS are optional — leave blank if Cloudflare Access
+# (or similar) already gates the tunnel.
+
+docker compose up -d --build
+```
+
+That serves the dashboard on `http://127.0.0.1:5050`, with `server/data/`
+(metrics DB + backup tarballs) persisted on the host via a volume mount.
+Point your Cloudflare Tunnel's ingress at `http://127.0.0.1:5050` for
+whatever hostname you want (e.g. `gpu.yourdomain.com`).
+
+Without Docker, run it directly instead:
+
 ```bash
 cd server
 python3 -m venv venv
 venv/bin/pip install -r requirements.txt
 cp .env.example .env
-# edit .env: set AGENT_TOKEN to a long random secret.
-# DASHBOARD_USER/PASS are optional — leave blank if Cloudflare Access
-# (or similar) already gates the tunnel.
-```
 
-Build the frontend (from `frontend/`, outputs straight into `server/static/`):
-
-```bash
-cd frontend
+cd ../client
 npm install
-npm run build
-```
+npm run build   # outputs straight into server/static/
 
-Run it:
-
-```bash
-cd server
+cd ../server
 venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-For a persistent deployment, use the provided systemd unit
+For a persistent non-Docker deployment, use the provided systemd unit
 (`server/gpu-monitor-server.service`) — edit the paths/user in it, then:
 
 ```bash
@@ -66,9 +74,6 @@ sudo cp gpu-monitor-server.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now gpu-monitor-server
 ```
-
-Point your Cloudflare Tunnel's ingress at `http://127.0.0.1:8000` for
-whatever hostname you want (e.g. `gpu.yourdomain.com`).
 
 ## Agent setup (GPU workstation)
 
@@ -104,8 +109,8 @@ drops.
 # terminal 1 — API with hot reload
 cd server && venv/bin/uvicorn app.main:app --reload --port 8000
 
-# terminal 2 — frontend with hot reload, proxied to the API above
-cd frontend && npm run dev
+# terminal 2 — client with hot reload, proxied to the API above
+cd client && npm run dev
 ```
 
 `vite.config.ts` proxies `/api` and `/ws` to `localhost:8000` in dev.
