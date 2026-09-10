@@ -1,6 +1,11 @@
-import type { Backup, LatestResponse } from './types'
+import type { AuthStatus, Backup, LatestResponse } from './types'
+
+export const UNAUTHORIZED_EVENT = 'gpu-monitor:unauthorized'
 
 async function json<T>(res: Response): Promise<T> {
+  if (res.status === 401) {
+    window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
+  }
   if (!res.ok) {
     throw new Error(`${res.status} ${res.statusText}`)
   }
@@ -8,6 +13,17 @@ async function json<T>(res: Response): Promise<T> {
 }
 
 export const api = {
+  authStatus: () => fetch('/api/auth/status').then((r) => json<AuthStatus>(r)),
+
+  login: (username: string, password: string) =>
+    fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    }).then((r) => json<{ ok: true }>(r)),
+
+  logout: () => fetch('/api/logout', { method: 'POST' }).then((r) => json<{ ok: true }>(r)),
+
   latest: () => fetch('/api/metrics/latest').then((r) => json<LatestResponse>(r)),
 
   history: (minutes: number) =>

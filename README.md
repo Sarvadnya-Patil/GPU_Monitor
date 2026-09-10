@@ -121,6 +121,9 @@ cd client && npm run dev
   ingest/backup endpoints — keep `.env` out of git (already gitignored) and
   make it long and random.
 - If the dashboard itself needs to stay private, either set
-  `DASHBOARD_USER`/`DASHBOARD_PASS` for HTTP Basic Auth, or put it behind
-  Cloudflare Access on the tunnel (preferred, since it doesn't rely on
-  Basic Auth going out in the clear if the tunnel is ever misconfigured).
+  `DASHBOARD_USER`/`DASHBOARD_PASS` to gate it behind the login page, or put
+  it behind Cloudflare Access on the tunnel instead (or both). Login issues
+  an httpOnly, signed session cookie (`SESSION_SECRET`, 7-day expiry) rather
+  than sending credentials on every request.
+- Keep `COOKIE_SECURE=true` (the default) for any real deployment — it's
+  only meant to be set to `false` for local `http://` testing.

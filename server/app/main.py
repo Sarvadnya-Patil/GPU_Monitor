@@ -1,12 +1,13 @@
 import time
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import Cookie, Depends, FastAPI, File, Form, HTTPException, Response, UploadFile, WebSocket, WebSocketDisconnect, status
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import db
+from . import auth as auth_module
 from .auth import require_agent_token, require_dashboard_auth
 from .ws import manager
 
@@ -31,6 +32,42 @@ async def ingest(payload: dict):
     db.insert_metric(payload)
     db.prune_older_than(time.time() - HISTORY_RETENTION_SECONDS)
     await manager.broadcast({"type": "metrics", "ts": time.time(), **payload})
+    return {"ok": True}
+
+
+# ---- Dashboard -> server: login/session ------------------------------------
+
+class LoginBody(BaseModel):
+    username: str
+    password: str
+
+
+@app.get("/api/auth/status")
+def auth_status(session: str | None = Cookie(default=None, alias=auth_module.SESSION_COOKIE)):
+    enabled = auth_module.dashboard_auth_enabled()
+    authenticated = (not enabled) or bool(session and auth_module.verify_session_token(session))
+    return {"enabled": enabled, "authenticated": authenticated}
+
+
+@app.post("/api/login")
+def login(body: LoginBody, response: Response):
+    if not auth_module.check_login(body.username, body.password):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid username or password")
+    name, value, max_age = auth_module.new_session_cookie()
+    response.set_cookie(
+        name,
+        value,
+        max_age=max_age,
+        httponly=True,
+        samesite="lax",
+        secure=auth_module.COOKIE_SECURE,
+    )
+    return {"ok": True}
+
+
+@app.post("/api/logout")
+def logout(response: Response):
+    response.delete_cookie(auth_module.SESSION_COOKIE)
     return {"ok": True}
 
 
@@ -116,6 +153,11 @@ def backup_download(backup_id: int):
 
 @app.websocket("/ws/metrics")
 async def ws_metrics(ws: WebSocket):
+    if auth_module.dashboard_auth_enabled():
+        session = ws.cookies.get(auth_module.SESSION_COOKIE)
+        if not session or not auth_module.verify_session_token(session):
+            await ws.close(code=4401)
+            return
     await manager.connect(ws)
     try:
         while True:
@@ -125,8 +167,10 @@ async def ws_metrics(ws: WebSocket):
 
 
 # ---- Static dashboard ----------------------------------------------------------
+# The HTML/JS shell itself carries no data, so it's served unauthenticated;
+# the login page it renders is what gates the actual API calls above.
 
-@app.get("/", dependencies=[Depends(require_dashboard_auth)])
+@app.get("/")
 def dashboard_index():
     return FileResponse(STATIC_DIR / "index.html")
 

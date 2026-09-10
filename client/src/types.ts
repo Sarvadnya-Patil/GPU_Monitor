@@ -1,3 +1,8 @@
+export interface AuthStatus {
+  enabled: boolean
+  authenticated: boolean
+}
+
 export interface GpuStat {
   index: number
   name: string
