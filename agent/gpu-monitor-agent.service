@@ -1,0 +1,16 @@
+[Unit]
+Description=GPU Monitor agent (pushes metrics, handles backup requests)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=user2
+WorkingDirectory=/home/user2/gpu-monitor-agent
+EnvironmentFile=/home/user2/gpu-monitor-agent/.env
+ExecStart=/home/user2/gpu-monitor-agent/venv/bin/python /home/user2/gpu-monitor-agent/gpu_agent.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
