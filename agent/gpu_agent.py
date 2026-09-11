@@ -18,9 +18,10 @@ import time
 import traceback
 from pathlib import Path
 
+import json
+
 import psutil
 import requests
-import speedtest as speedtest_lib
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -33,6 +34,16 @@ BACKUP_POLL_EVERY = int(os.environ.get("BACKUP_POLL_EVERY_TICKS", "4"))  # also 
 VENV_PYTHON = os.environ.get("VENV_PYTHON", sys.executable)
 PIP_CACHE_DIR = Path(os.environ.get("PIP_CACHE_DIR", "~/.cache/pip")).expanduser()
 GIT_INSTALL_DIR = Path(os.environ.get("GIT_INSTALL_DIR", "~/local/git")).expanduser()
+
+# Ookla's official CLI (https://www.speedtest.net/apps/cli) — far more
+# reliable than the abandoned "speedtest-cli" PyPI package, which picks bad
+# servers and reports bogus numbers on this network. Defaults to a portable
+# install alongside the other tools in ~/local (see README), falling back
+# to whatever "speedtest" resolves to on PATH.
+_default_speedtest_bin = Path("~/local/speedtest/speedtest").expanduser()
+SPEEDTEST_BIN = os.environ.get(
+    "SPEEDTEST_BIN", str(_default_speedtest_bin) if _default_speedtest_bin.exists() else "speedtest"
+)
 
 HEADERS = {"Authorization": f"Bearer {AGENT_TOKEN}"}
 SESSION = requests.Session()
@@ -221,13 +232,24 @@ def handle_pending_speedtest():
     SESSION.post(f"{SERVER_URL}/api/speedtest/{speedtest_id}/start", timeout=15)
 
     try:
-        st = speedtest_lib.Speedtest()
-        st.get_best_server()
-        download_mbps = st.download() / 1e6
-        upload_mbps = st.upload() / 1e6
-        ping_ms = st.results.ping
-        server = st.results.server or {}
-        server_name = f"{server.get('sponsor', '')} ({server.get('name', '')})".strip()
+        out = subprocess.run(
+            [SPEEDTEST_BIN, "--accept-license", "--accept-gdpr", "--format=json"],
+            capture_output=True,
+            text=True,
+            timeout=90,
+        )
+        if out.returncode != 0:
+            raise RuntimeError(f"speedtest exited {out.returncode}: {out.stderr.strip() or out.stdout.strip()}")
+
+        result = json.loads(out.stdout)
+        if result.get("download", {}).get("bandwidth", 0) <= 0 or result.get("upload", {}).get("bandwidth", 0) <= 0:
+            raise RuntimeError(f"speedtest reported an invalid result: {out.stdout.strip()}")
+
+        download_mbps = result["download"]["bandwidth"] * 8 / 1e6
+        upload_mbps = result["upload"]["bandwidth"] * 8 / 1e6
+        ping_ms = result["ping"]["latency"]
+        server = result.get("server", {})
+        server_name = f"{server.get('name', '')} ({server.get('location', '')})".strip()
 
         r = SESSION.post(
             f"{SERVER_URL}/api/speedtest/{speedtest_id}/result",

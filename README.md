@@ -86,6 +86,22 @@ python3 -m venv venv
 venv/bin/pip install -r requirements.txt
 ```
 
+For the speed test feature, install Ookla's official CLI (the PyPI
+`speedtest-cli` package is unmaintained and gives unreliable results — it
+picked a server hundreds of km away and reported numbers that varied
+wildly between runs on this network). No sudo needed, same portable-install
+pattern as `~/local/git`:
+
+```bash
+mkdir -p ~/local/speedtest && cd ~/local/speedtest
+curl -sL -o speedtest.tgz https://install.speedtest.net/app/cli/ookla-speedtest-1.2.0-linux-x86_64.tgz
+tar xzf speedtest.tgz speedtest && rm speedtest.tgz
+```
+
+The agent looks for it at `~/local/speedtest/speedtest` by default, or set
+`SPEEDTEST_BIN` in `.env` to point elsewhere (e.g. if `speedtest` is
+already on `PATH`).
+
 Set `SERVER_URL` and `AGENT_TOKEN` one of two ways:
 
 - **Pairing code (recommended)** — on the dashboard, open "Pair a new agent"
