@@ -41,4 +41,9 @@ export const api = {
     }).then((r) => json<{ id: number; status: string }>(r)),
 
   downloadBackupUrl: (id: number) => `/api/backups/${id}/download`,
+
+  createPairingCode: () =>
+    fetch('/api/agent/pairing-code', { method: 'POST' }).then((r) =>
+      json<{ code: string; expires_at: number }>(r),
+    ),
 }

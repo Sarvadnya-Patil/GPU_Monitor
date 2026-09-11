@@ -1,3 +1,4 @@
+import secrets
 import time
 from pathlib import Path
 
@@ -69,6 +70,33 @@ def login(body: LoginBody, response: Response):
 def logout(response: Response):
     response.delete_cookie(auth_module.SESSION_COOKIE)
     return {"ok": True}
+
+
+# ---- Agent pairing ----------------------------------------------------------
+# Lets you set up a new agent without copying the long AGENT_TOKEN by hand:
+# the dashboard shows a short code good for 5 minutes; the agent exchanges
+# it, once, for the real token.
+
+PAIRING_CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"  # no 0/O/1/I/L
+
+
+class PairBody(BaseModel):
+    code: str
+
+
+@app.post("/api/agent/pairing-code", dependencies=[Depends(require_dashboard_auth)])
+def create_pairing_code():
+    code = "".join(secrets.choice(PAIRING_CODE_ALPHABET) for _ in range(8))
+    expires_at = db.create_pairing_code(code)
+    return {"code": code, "expires_at": expires_at}
+
+
+@app.post("/api/agent/pair")
+def pair_agent(body: PairBody):
+    code = body.code.strip().upper()
+    if not db.consume_pairing_code(code):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid or expired code")
+    return {"agent_token": auth_module.AGENT_TOKEN}
 
 
 # ---- Dashboard -> server: read metrics -------------------------------------

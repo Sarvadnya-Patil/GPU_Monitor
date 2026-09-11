@@ -81,12 +81,21 @@ sudo systemctl enable --now gpu-monitor-server
 cd agent
 python3 -m venv venv
 venv/bin/pip install -r requirements.txt
-cp .env.example .env
 ```
 
-Edit `.env`:
-- `SERVER_URL` — your public dashboard URL (e.g. `https://gpu.yourdomain.com`)
-- `AGENT_TOKEN` — must match the server's `AGENT_TOKEN`
+Set `SERVER_URL` and `AGENT_TOKEN` one of two ways:
+
+- **Pairing code (recommended)** — on the dashboard, open "Pair a new agent"
+  and generate a code (valid 5 minutes, single-use), then run:
+  ```bash
+  venv/bin/python pair.py https://gpu.yourdomain.com <the-code>
+  ```
+  This writes `SERVER_URL` and `AGENT_TOKEN` into `.env` for you — no need
+  to copy the long token by hand.
+- **Manual** — `cp .env.example .env` and edit it directly: `SERVER_URL` is
+  your public dashboard URL, `AGENT_TOKEN` must match the server's.
+
+Either way, also check these in `.env`:
 - `VENV_PYTHON` — path to the Python whose `pip freeze` you want in backups
   (e.g. `~/venvs/oceanembed/bin/python`)
 - `PIP_CACHE_DIR` / `GIT_INSTALL_DIR` — default to `~/.cache/pip` and

@@ -24,6 +24,12 @@ CREATE TABLE IF NOT EXISTS backups (
     error TEXT,
     extra_paths TEXT NOT NULL DEFAULT '[]'
 );
+
+CREATE TABLE IF NOT EXISTS pairing_codes (
+    code TEXT PRIMARY KEY,
+    expires_at REAL NOT NULL,
+    used INTEGER NOT NULL DEFAULT 0
+);
 """
 
 
@@ -142,3 +148,29 @@ def get_backup(backup_id: int):
             "SELECT * FROM backups WHERE id = ?", (backup_id,)
         ).fetchone()
     return _parse_row(row) if row else None
+
+
+PAIRING_CODE_TTL_SECONDS = 5 * 60
+
+
+def create_pairing_code(code: str):
+    expires_at = time.time() + PAIRING_CODE_TTL_SECONDS
+    with get_conn() as conn:
+        conn.execute("DELETE FROM pairing_codes WHERE expires_at < ?", (time.time(),))
+        conn.execute(
+            "INSERT INTO pairing_codes (code, expires_at) VALUES (?, ?)",
+            (code, expires_at),
+        )
+    return expires_at
+
+
+def consume_pairing_code(code: str) -> bool:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM pairing_codes WHERE code = ? AND used = 0 AND expires_at >= ?",
+            (code, time.time()),
+        ).fetchone()
+        if not row:
+            return False
+        conn.execute("UPDATE pairing_codes SET used = 1 WHERE code = ?", (code,))
+        return True

@@ -4,6 +4,7 @@ import { BackupPanel } from './components/BackupPanel'
 import { GpuCard } from './components/GpuCard'
 import { HostCard } from './components/HostCard'
 import { LoginPage } from './components/LoginPage'
+import { PairingPanel } from './components/PairingPanel'
 import { ProcessesTable } from './components/ProcessesTable'
 import { StatusBar } from './components/StatusBar'
 import { UtilChart } from './components/UtilChart'
@@ -50,7 +51,10 @@ function Dashboard({ authEnabled, onLoggedOut }: { authEnabled: boolean; onLogge
       </header>
 
       {!latest ? (
-        <div style={{ color: 'var(--text-muted)', fontSize: 14 }}>Waiting for data…</div>
+        <div style={{ display: 'grid', gap: 20 }}>
+          <div style={{ color: 'var(--text-muted)', fontSize: 14 }}>Waiting for data…</div>
+          <PairingPanel />
+        </div>
       ) : (
         <div style={{ display: 'grid', gap: 20 }}>
           <div
@@ -71,6 +75,8 @@ function Dashboard({ authEnabled, onLoggedOut }: { authEnabled: boolean; onLogge
           <ProcessesTable processes={latest.processes} />
 
           <BackupPanel />
+
+          <PairingPanel />
         </div>
       )}
     </div>
