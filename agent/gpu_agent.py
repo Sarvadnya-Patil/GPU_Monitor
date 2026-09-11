@@ -10,15 +10,16 @@ here is an outbound HTTP call, which is what makes this work despite the
 workstation not being reachable from outside the jump host.
 """
 import io
+import json
+import logging
 import os
 import subprocess
 import sys
 import tarfile
 import time
 import traceback
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
-
-import json
 
 import psutil
 import requests
@@ -30,6 +31,22 @@ SERVER_URL = os.environ["SERVER_URL"].rstrip("/")
 AGENT_TOKEN = os.environ["AGENT_TOKEN"]
 PUSH_INTERVAL = float(os.environ.get("PUSH_INTERVAL_SECONDS", "15"))
 BACKUP_POLL_EVERY = int(os.environ.get("BACKUP_POLL_EVERY_TICKS", "4"))  # also gates speedtest polling
+
+# The workstation's Cloudflare Tunnel isn't always up, so failed pushes can
+# log continuously — keep agent.log small instead of growing unbounded.
+# ~100 bytes/line, so 20_000 bytes is roughly 200 lines; one backup file is
+# kept on rotation, so total disk use stays bounded to about 2x that.
+LOG_FILE = os.environ.get("LOG_FILE", str(Path(__file__).resolve().parent / "agent.log"))
+LOG_MAX_BYTES = int(os.environ.get("LOG_MAX_BYTES", "20000"))
+LOG_BACKUP_COUNT = int(os.environ.get("LOG_BACKUP_COUNT", "1"))
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    handlers=[RotatingFileHandler(LOG_FILE, maxBytes=LOG_MAX_BYTES, backupCount=LOG_BACKUP_COUNT)],
+)
+log = logging.getLogger("gpu_agent")
 
 VENV_PYTHON = os.environ.get("VENV_PYTHON", sys.executable)
 PIP_CACHE_DIR = Path(os.environ.get("PIP_CACHE_DIR", "~/.cache/pip")).expanduser()
@@ -171,7 +188,7 @@ def build_backup_tarball(request_extra_paths: list[str] | None = None) -> io.Byt
             if path.exists():
                 tar.add(path, arcname=f"extra_{i}_{path.name}")
             else:
-                print(f"[backup] extra path does not exist, skipping: {path}")
+                log.warning(f"[backup] extra path does not exist, skipping: {path}")
 
         lockfile = run_pip_freeze()
         info = tarfile.TarInfo(name="pip-freeze.lock.txt")
@@ -191,7 +208,7 @@ def handle_pending_backup():
         return
 
     backup_id = pending["id"]
-    print(f"[backup] starting backup #{backup_id}")
+    log.info(f"[backup] starting backup #{backup_id}")
     SESSION.post(f"{SERVER_URL}/api/backup/{backup_id}/start", timeout=15)
 
     try:
@@ -201,10 +218,10 @@ def handle_pending_backup():
             f"{SERVER_URL}/api/backup/{backup_id}/upload", files=files, timeout=600
         )
         r.raise_for_status()
-        print(f"[backup] #{backup_id} uploaded")
+        log.info(f"[backup] #{backup_id} uploaded")
     except Exception as exc:  # noqa: BLE001
         error = f"{exc}\n{traceback.format_exc()}"
-        print(f"[backup] #{backup_id} failed: {exc}")
+        log.error(f"[backup] #{backup_id} failed: {exc}")
         try:
             SESSION.post(
                 f"{SERVER_URL}/api/backup/{backup_id}/fail",
@@ -228,7 +245,7 @@ def handle_pending_speedtest():
         return
 
     speedtest_id = pending["id"]
-    print(f"[speedtest] starting #{speedtest_id}")
+    log.info(f"[speedtest] starting #{speedtest_id}")
     SESSION.post(f"{SERVER_URL}/api/speedtest/{speedtest_id}/start", timeout=15)
 
     try:
@@ -262,10 +279,10 @@ def handle_pending_speedtest():
             timeout=15,
         )
         r.raise_for_status()
-        print(f"[speedtest] #{speedtest_id} done: {download_mbps:.1f}/{upload_mbps:.1f} Mbps")
+        log.info(f"[speedtest] #{speedtest_id} done: {download_mbps:.1f}/{upload_mbps:.1f} Mbps")
     except Exception as exc:  # noqa: BLE001
         error = f"{exc}\n{traceback.format_exc()}"
-        print(f"[speedtest] #{speedtest_id} failed: {exc}")
+        log.error(f"[speedtest] #{speedtest_id} failed: {exc}")
         try:
             SESSION.post(
                 f"{SERVER_URL}/api/speedtest/{speedtest_id}/fail",
@@ -288,14 +305,14 @@ def push_metrics_with_retry(payload: dict, retries: int = 3):
             r.raise_for_status()
             return
         except requests.RequestException as exc:
-            print(f"[push] attempt {attempt}/{retries} failed: {exc}")
+            log.warning(f"[push] attempt {attempt}/{retries} failed: {exc}")
             if attempt < retries:
                 time.sleep(delay)
                 delay *= 2
 
 
 def main():
-    print(f"[agent] pushing to {SERVER_URL} every {PUSH_INTERVAL}s")
+    log.info(f"[agent] pushing to {SERVER_URL} every {PUSH_INTERVAL}s")
     tick = 0
     while True:
         start = time.time()
@@ -303,18 +320,18 @@ def main():
             payload = collect_payload()
             push_metrics_with_retry(payload)
         except Exception as exc:  # noqa: BLE001
-            print(f"[agent] metrics collection failed: {exc}")
+            log.warning(f"[agent] metrics collection failed: {exc}")
 
         tick += 1
         if tick % BACKUP_POLL_EVERY == 0:
             try:
                 handle_pending_backup()
             except Exception as exc:  # noqa: BLE001
-                print(f"[agent] backup poll failed: {exc}")
+                log.warning(f"[agent] backup poll failed: {exc}")
             try:
                 handle_pending_speedtest()
             except Exception as exc:  # noqa: BLE001
-                print(f"[agent] speedtest poll failed: {exc}")
+                log.warning(f"[agent] speedtest poll failed: {exc}")
 
         elapsed = time.time() - start
         time.sleep(max(0.0, PUSH_INTERVAL - elapsed))
