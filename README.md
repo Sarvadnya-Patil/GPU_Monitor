@@ -30,6 +30,9 @@ GPU workstation (agent, outbound only) --HTTPS--> home server (FastAPI) <--Cloud
 - A "Backup now" button that has the agent tar up `~/.cache/pip`,
   `~/local/git`, and a fresh `pip freeze` lockfile, then upload it — useful
   for restoring the environment if the workstation is ever wiped
+- A "Run speed test" button that has the agent run a real speedtest.net
+  test and report download/upload/ping back — manual only, on demand, never
+  on a timer, since it actually consumes bandwidth
 
 ## Server setup (home server)
 

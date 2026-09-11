@@ -30,6 +30,18 @@ CREATE TABLE IF NOT EXISTS pairing_codes (
     expires_at REAL NOT NULL,
     used INTEGER NOT NULL DEFAULT 0
 );
+
+CREATE TABLE IF NOT EXISTS speedtests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    requested_at REAL NOT NULL,
+    completed_at REAL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    download_mbps REAL,
+    upload_mbps REAL,
+    ping_ms REAL,
+    server_name TEXT,
+    error TEXT
+);
 """
 
 
@@ -174,3 +186,54 @@ def consume_pairing_code(code: str) -> bool:
             return False
         conn.execute("UPDATE pairing_codes SET used = 1 WHERE code = ?", (code,))
         return True
+
+
+def create_speedtest_request() -> int:
+    with get_conn() as conn:
+        cur = conn.execute(
+            "INSERT INTO speedtests (requested_at, status) VALUES (?, 'pending')",
+            (time.time(),),
+        )
+        return cur.lastrowid
+
+
+def get_pending_speedtest():
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM speedtests WHERE status = 'pending' ORDER BY id ASC LIMIT 1"
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def mark_speedtest_running(speedtest_id: int):
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE speedtests SET status = 'running' WHERE id = ?", (speedtest_id,)
+        )
+
+
+def mark_speedtest_done(
+    speedtest_id: int, download_mbps: float, upload_mbps: float, ping_ms: float, server_name: str
+):
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE speedtests SET status = 'done', download_mbps = ?, upload_mbps = ?, "
+            "ping_ms = ?, server_name = ?, completed_at = ? WHERE id = ?",
+            (download_mbps, upload_mbps, ping_ms, server_name, time.time(), speedtest_id),
+        )
+
+
+def mark_speedtest_failed(speedtest_id: int, error: str):
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE speedtests SET status = 'failed', error = ?, completed_at = ? WHERE id = ?",
+            (error, time.time(), speedtest_id),
+        )
+
+
+def list_speedtests(limit: int = 20):
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM speedtests ORDER BY id DESC LIMIT ?", (limit,)
+        ).fetchall()
+    return [dict(r) for r in rows]

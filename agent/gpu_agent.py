@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Outbound-only agent: polls local GPU/host stats and pushes them to the
-dashboard server over HTTPS. Also polls for pending backup requests and,
-when one appears, tars up the pip cache + portable git install (+ a
-`pip freeze` lockfile) and uploads it.
+dashboard server over HTTPS. Also polls for pending backup and speed test
+requests made from the dashboard: a backup tars up the pip cache + portable
+git install (+ a `pip freeze` lockfile) and uploads it; a speed test runs
+Ookla speedtest.net and reports download/upload/ping back.
 
 Runs on the GPU workstation. Never accepts inbound connections — everything
 here is an outbound HTTP call, which is what makes this work despite the
@@ -19,6 +20,7 @@ from pathlib import Path
 
 import psutil
 import requests
+import speedtest as speedtest_lib
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -26,7 +28,7 @@ load_dotenv()
 SERVER_URL = os.environ["SERVER_URL"].rstrip("/")
 AGENT_TOKEN = os.environ["AGENT_TOKEN"]
 PUSH_INTERVAL = float(os.environ.get("PUSH_INTERVAL_SECONDS", "15"))
-BACKUP_POLL_EVERY = int(os.environ.get("BACKUP_POLL_EVERY_TICKS", "4"))
+BACKUP_POLL_EVERY = int(os.environ.get("BACKUP_POLL_EVERY_TICKS", "4"))  # also gates speedtest polling
 
 VENV_PYTHON = os.environ.get("VENV_PYTHON", sys.executable)
 PIP_CACHE_DIR = Path(os.environ.get("PIP_CACHE_DIR", "~/.cache/pip")).expanduser()
@@ -203,6 +205,56 @@ def handle_pending_backup():
 
 
 # --------------------------------------------------------------------------
+# Speed test — manually triggered from the dashboard only, never on a timer,
+# since it actually consumes bandwidth.
+# --------------------------------------------------------------------------
+
+def handle_pending_speedtest():
+    resp = SESSION.get(f"{SERVER_URL}/api/speedtest/pending", timeout=15)
+    resp.raise_for_status()
+    pending = resp.json().get("pending")
+    if not pending:
+        return
+
+    speedtest_id = pending["id"]
+    print(f"[speedtest] starting #{speedtest_id}")
+    SESSION.post(f"{SERVER_URL}/api/speedtest/{speedtest_id}/start", timeout=15)
+
+    try:
+        st = speedtest_lib.Speedtest()
+        st.get_best_server()
+        download_mbps = st.download() / 1e6
+        upload_mbps = st.upload() / 1e6
+        ping_ms = st.results.ping
+        server = st.results.server or {}
+        server_name = f"{server.get('sponsor', '')} ({server.get('name', '')})".strip()
+
+        r = SESSION.post(
+            f"{SERVER_URL}/api/speedtest/{speedtest_id}/result",
+            json={
+                "download_mbps": download_mbps,
+                "upload_mbps": upload_mbps,
+                "ping_ms": ping_ms,
+                "server_name": server_name,
+            },
+            timeout=15,
+        )
+        r.raise_for_status()
+        print(f"[speedtest] #{speedtest_id} done: {download_mbps:.1f}/{upload_mbps:.1f} Mbps")
+    except Exception as exc:  # noqa: BLE001
+        error = f"{exc}\n{traceback.format_exc()}"
+        print(f"[speedtest] #{speedtest_id} failed: {exc}")
+        try:
+            SESSION.post(
+                f"{SERVER_URL}/api/speedtest/{speedtest_id}/fail",
+                data={"error": error[:2000]},
+                timeout=15,
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
+
+# --------------------------------------------------------------------------
 # Main loop
 # --------------------------------------------------------------------------
 
@@ -237,6 +289,10 @@ def main():
                 handle_pending_backup()
             except Exception as exc:  # noqa: BLE001
                 print(f"[agent] backup poll failed: {exc}")
+            try:
+                handle_pending_speedtest()
+            except Exception as exc:  # noqa: BLE001
+                print(f"[agent] speedtest poll failed: {exc}")
 
         elapsed = time.time() - start
         time.sleep(max(0.0, PUSH_INTERVAL - elapsed))

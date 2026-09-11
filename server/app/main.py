@@ -177,6 +177,53 @@ def backup_download(backup_id: int):
     return FileResponse(path, filename=b["filename"], media_type="application/gzip")
 
 
+# ---- Speed test ---------------------------------------------------------------
+# Manually triggered from the dashboard, same request/poll pattern as backups:
+# real bandwidth use, so it never runs on a timer.
+
+@app.post("/api/speedtest/request", dependencies=[Depends(require_dashboard_auth)])
+def speedtest_request():
+    speedtest_id = db.create_speedtest_request()
+    return {"id": speedtest_id, "status": "pending"}
+
+
+@app.get("/api/speedtest/pending", dependencies=[Depends(require_agent_token)])
+def speedtest_pending():
+    return {"pending": db.get_pending_speedtest()}
+
+
+@app.post("/api/speedtest/{speedtest_id}/start", dependencies=[Depends(require_agent_token)])
+def speedtest_start(speedtest_id: int):
+    db.mark_speedtest_running(speedtest_id)
+    return {"ok": True}
+
+
+class SpeedtestResultBody(BaseModel):
+    download_mbps: float
+    upload_mbps: float
+    ping_ms: float
+    server_name: str = ""
+
+
+@app.post("/api/speedtest/{speedtest_id}/result", dependencies=[Depends(require_agent_token)])
+def speedtest_result(speedtest_id: int, body: SpeedtestResultBody):
+    db.mark_speedtest_done(
+        speedtest_id, body.download_mbps, body.upload_mbps, body.ping_ms, body.server_name
+    )
+    return {"ok": True}
+
+
+@app.post("/api/speedtest/{speedtest_id}/fail", dependencies=[Depends(require_agent_token)])
+def speedtest_fail(speedtest_id: int, error: str = Form(...)):
+    db.mark_speedtest_failed(speedtest_id, error)
+    return {"ok": True}
+
+
+@app.get("/api/speedtests", dependencies=[Depends(require_dashboard_auth)])
+def speedtests_list():
+    return {"speedtests": db.list_speedtests()}
+
+
 # ---- Live updates -------------------------------------------------------------
 
 @app.websocket("/ws/metrics")

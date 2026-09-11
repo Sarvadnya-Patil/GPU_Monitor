@@ -44,6 +44,20 @@ export interface LatestResponse {
   metric: MetricPoint | null
 }
 
+export type SpeedtestStatus = 'pending' | 'running' | 'done' | 'failed'
+
+export interface Speedtest {
+  id: number
+  requested_at: number
+  completed_at: number | null
+  status: SpeedtestStatus
+  download_mbps: number | null
+  upload_mbps: number | null
+  ping_ms: number | null
+  server_name: string | null
+  error: string | null
+}
+
 export type BackupStatus = 'pending' | 'running' | 'done' | 'failed'
 
 export interface Backup {

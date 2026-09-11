@@ -1,4 +1,4 @@
-import type { AuthStatus, Backup, LatestResponse } from './types'
+import type { AuthStatus, Backup, LatestResponse, Speedtest } from './types'
 
 export const UNAUTHORIZED_EVENT = 'gpu-monitor:unauthorized'
 
@@ -45,5 +45,12 @@ export const api = {
   createPairingCode: () =>
     fetch('/api/agent/pairing-code', { method: 'POST' }).then((r) =>
       json<{ code: string; expires_at: number }>(r),
+    ),
+
+  speedtests: () => fetch('/api/speedtests').then((r) => json<{ speedtests: Speedtest[] }>(r)),
+
+  requestSpeedtest: () =>
+    fetch('/api/speedtest/request', { method: 'POST' }).then((r) =>
+      json<{ id: number; status: string }>(r),
     ),
 }

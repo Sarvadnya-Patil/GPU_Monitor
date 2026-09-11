@@ -6,6 +6,7 @@ import { HostCard } from './components/HostCard'
 import { LoginPage } from './components/LoginPage'
 import { PairingPanel } from './components/PairingPanel'
 import { ProcessesTable } from './components/ProcessesTable'
+import { SpeedTestPanel } from './components/SpeedTestPanel'
 import { StatusBar } from './components/StatusBar'
 import { UtilChart } from './components/UtilChart'
 import { useLiveMetrics } from './hooks/useLiveMetrics'
@@ -75,6 +76,8 @@ function Dashboard({ authEnabled, onLoggedOut }: { authEnabled: boolean; onLogge
           <ProcessesTable processes={latest.processes} />
 
           <BackupPanel />
+
+          <SpeedTestPanel />
 
           <PairingPanel />
         </div>
