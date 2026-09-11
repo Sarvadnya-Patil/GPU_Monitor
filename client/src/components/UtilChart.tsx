@@ -4,12 +4,16 @@ import { Card } from './Card'
 
 export function UtilChart({ history }: { history: MetricPoint[] }) {
   const data = history.map((p) => ({
-    time: new Date(p.ts * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    time: new Date(p.ts * 1000).toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    }),
     util: p.gpus[0]?.util_percent ?? 0,
   }))
 
   return (
-    <Card title="GPU utilization (last 30 min)">
+    <Card title="GPU utilization (last 5 min)">
       <div style={{ width: '100%', height: 180 }}>
         <ResponsiveContainer>
           <AreaChart data={data} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>

@@ -12,7 +12,7 @@ import { UtilChart } from './components/UtilChart'
 import { useLiveMetrics } from './hooks/useLiveMetrics'
 
 function Dashboard({ authEnabled, onLoggedOut }: { authEnabled: boolean; onLoggedOut: () => void }) {
-  const { latest, history, online } = useLiveMetrics(30)
+  const { latest, history, online } = useLiveMetrics(5)
 
   const logout = async () => {
     await api.logout()
